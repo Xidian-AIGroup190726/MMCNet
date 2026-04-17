@@ -1,7 +1,7 @@
 from einops import rearrange
-from MMCNet.pan_mamba import BasicConv2d, PANMamba, MSMamba, FusionMamba
-from MMCNet.loss import FocalLoss
-from MMCNet.mbcc import MBCC
+from pan_mamba import BasicConv2d, PANMamba, MSMamba, FusionMamba
+from loss import FocalLoss
+from mbcac import MBCAC
 from torch import nn
 import torch
 
@@ -23,7 +23,6 @@ class mynet(nn.Module):
         insize2 = Ms4_patch_size * 4 // down_rate[0]
         insize3 = insize2 // down_rate[1]
         out_size = insize3 // down_rate[2]
-        # out_size = insize4 // down_rate[3]
 
         self.PAN_1 = PANMamba(use_reconstruct=use_reconstruct, gate_threshold=gate_threshold,
                               down_rate=down_rate[0], dim_expand_rate=hidden_expand,
@@ -34,9 +33,6 @@ class mynet(nn.Module):
         self.PAN_3 = PANMamba(use_reconstruct=use_reconstruct, gate_threshold=gate_threshold,
                               down_rate=down_rate[2], dim_expand_rate=hidden_expand,
                               patch_size=patch_size[2], in_dim=dim, in_size=insize3)
-        # self.PAN_4 = PANMamba(use_reconstruct=use_reconstruct, gate_threshold=gate_threshold,
-        #                       down_rate=down_rate[3], dim_expand_rate=hidden_expand,
-        #                       patch_size=patch_size[3], in_dim=dim, in_size=insize4)
 
         self.up = nn.Upsample(scale_factor=4, mode='bilinear', align_corners=False)
         self.MS_embed = BasicConv2d(4, dim, kernel_size=3, stride=1, padding=1)
@@ -50,17 +46,14 @@ class mynet(nn.Module):
         self.MS_3 = MSMamba(use_reconstruct=use_reconstruct, gate_threshold=gate_threshold,
                             down_rate=down_rate[2], dim_expand_rate=hidden_expand,
                             patch_size=patch_size[2], in_dim=dim, in_size=insize3)
-        # self.MS_4 = MSMamba(use_reconstruct=use_reconstruct, gate_threshold=gate_threshold,
-        #                     down_rate=down_rate[3], dim_expand_rate=hidden_expand,
-        #                     patch_size=patch_size[3], in_dim=dim, in_size=insize4)
 
         self.fusion_mamba_1 = FusionMamba(d_model=dim, expand=1, use_exchange=use_exchange, use_sobel=use_sobel)
         self.fusion_mamba_2 = FusionMamba(d_model=dim, expand=1, use_exchange=use_exchange, use_sobel=use_sobel)
         self.fusion_mamba_3 = FusionMamba(d_model=dim, expand=1, use_exchange=use_exchange, use_sobel=use_sobel)
-        # self.fusion_mamba_4 = FusionMamba(d_model=dim, expand=1, use_exchange=use_exchange, use_sobel=use_sobel)
+
         self.use_mha = use_mha
         if self.use_mha:
-            self.outlayer = MBCC(lam=lam, input_dim=dim, num_classes=num_classes, learn=learn)
+            self.outlayer = MBCAC(lam=lam, input_dim=dim, num_classes=num_classes, learn=learn)
 
         else:
             self.outlayer = nn.Sequential(nn.Linear(dim * out_size * out_size, dim * out_size),
@@ -68,8 +61,6 @@ class mynet(nn.Module):
                                           nn.Linear(dim * out_size, dim),
                                           nn.SiLU(),
                                           nn.Linear(dim, num_classes))
-
-        # self.Loss_bce = nn.CrossEntropyLoss()
 
         self.Focal_loss = FocalLoss(num_classes)
         # 参数初始化
@@ -94,20 +85,12 @@ class mynet(nn.Module):
         ms = self.MS_3(ms + ms_2)
         pan_3, ms_3 = self.fusion_mamba_3(pan, ms)
 
-        # pan = self.PAN_4(pan + pan_3)
-        # ms = self.MS_4(ms + ms_3)
-        # pan_4, ms_4 = self.fusion_mamba_4(pan, ms)
-
         if self.use_mha:
             out_1 = self.outlayer(pan_1 + ms_1)
             out_2 = self.outlayer(pan_2 + ms_2)
             out_3 = self.outlayer(pan_3 + ms_3)
             out = out_1 + out_2 + out_3
-            # out = self.outlayer(pan_3 + ms_3)
-            #
-            # out_4 = self.outlayer(pan_4 + ms_4)
 
-            # out = self.outlayer(pan_4 + ms_4)
         else:
             f_out = pan_3 + ms_3
             f_out = f_out.contiguous().view(f_out.shape[0], -1)
@@ -133,7 +116,6 @@ if __name__ == '__main__':
 
     pan = torch.rand(2, 1, 64, 64).cuda()
     ms = torch.rand(2, 4, 16, 16).cuda()
-    # mshpan = torch.randn(2, 1, 64, 64)
     model = mynet(dim=64, num_classes=12, lam=0.25, gate_threshold=0.5).cuda()
     from thop import profile
 

@@ -8,9 +8,9 @@ import torch.nn.functional as F
 
 from einops import rearrange, repeat
 
-from mamba_ssm.ops.selective_scan_interface import selective_scan_fn, mamba_inner_fn
+from mamba_ssm.ops.selective_scan_interface import selective_scan_fn
 
-from MMCNet.norm import LayerNorm, BiasFree_LayerNorm, WithBias_LayerNorm
+from norm import LayerNorm, WithBias_LayerNorm
 
 
 try:
@@ -197,20 +197,11 @@ class SpaEmbedding(nn.Module):
                                   nn.Conv1d(hidden, out_channels=in_size * in_size // down_rate // down_rate, kernel_size=1,
                                             stride=1, padding=0, bias=False),
                                   )
-        # self.dim = in_dim * patch_size * patch_size
-        # self.linear = nn.Sequential(nn.Linear(self.dim, hidden),
-        #                             nn.SiLU(),
-        #                             nn.Linear(hidden, hidden),
-        #                             nn.SiLU(),
-        #                             nn.Linear(hidden, in_dim * dim_expand_rate))
 
     def forward(self, x):
-        batch, dim, h, w = x.shape
 
         out = self.unfold(x).permute(0, 2, 1)  # batch, h/ps * w/ps, c * ps * ps
         out = self.conv(out)
-        # hw = h * w // self.down_rate // self.down_rate
-        # out = self.linear(out.reshape(batch * hw, -1)).reshape(batch, hw, -1)
 
         return out
 
@@ -226,17 +217,10 @@ class SpeEmbedding(nn.Module):
             nn.SiLU(),
             nn.Conv1d(hidden, out_channels=in_dim * dim_expand_rate, kernel_size=1, stride=1, padding=0, bias=False),
         )
-        # self.linear = nn.Sequential(nn.Linear(in_size * in_size, hidden),
-        #                             nn.SiLU(),
-        #                             nn.Linear(hidden, hidden),
-        #                             nn.SiLU(),
-        #                             nn.Linear(hidden, in_size * in_size // self.down_rate // self.down_rate))
 
     def forward(self, x):
-        batch, dim, h, w = x.shape
         out = to_3d(x).permute(0, 2, 1)  # b, C, h*w
         out = self.conv(out)
-        # out = self.linear(out.view(batch * dim * self.dim_expand_rate, -1)).view(batch, dim * self.dim_expand_rate, -1)
 
         return out
 
